@@ -10,12 +10,13 @@ export default function TypeCoveragePanel({ typeAnalysis }) {
         <div className="display-font text-lg tracking-wider">DEFENSIVE COVERAGE</div>
       </div>
       <div className="text-[10px] tracking-widest text-stone-500 uppercase mb-3">
-        Per-type team breakdown · ⚠ flagged when 3+ weak or 2+ weak with 0 resists
+        Per-type team breakdown · ⚠ flagged on uncoverable holes (4+ weak, or 3+ weak with ≤1 resist, or 2+ weak with 0 resists)
       </div>
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-1">
         {TYPES.map((t) => {
           const c = typeAnalysis[t];
-          const flagged = c.weak >= 3 || (c.weak >= 2 && c.resist + c.immune === 0);
+          const resists = c.resist + c.immune;
+          const flagged = c.weak >= 4 || (c.weak >= 3 && resists < 2) || (c.weak >= 2 && resists === 0);
           return (
             <div
               key={t}

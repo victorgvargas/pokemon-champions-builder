@@ -145,7 +145,14 @@ META POOL (top 50 Pokémon, use these dex_ids when filling slots):
 ${JSON.stringify(pool)}
 
 Behavior:
-- If the user asks to BUILD or FILL the team (full team, specific archetype like "sun", "trick room", "rain", "tailwind offense"), set action = "fill_team" and put one pick per empty slot in suggested_fills. Prefer meta Pokémon. Use dex_ids from the META POOL above. For each pick include role, ability, item, and 4 moves.
+- If the user asks to BUILD or FILL the team (full team, specific archetype like "sun", "trick room", "rain", "tailwind offense", OR they ask for a tier/quality like "A-tier", "S-tier", "tournament-ready"), set action = "fill_team" and put one pick per empty slot in suggested_fills. Prefer meta Pokémon. Use dex_ids from the META POOL above. For each pick include role, ability, item, and 4 moves.
+- When filling, AIM FOR A-TIER BY DEFAULT unless the user specifies otherwise. A-tier means:
+  * Coherent archetype (sun / rain / TR / tailwind / hyper offense / Fake Out control).
+  * Speed control present (Tailwind, Trick Room, Choice Scarf, or priority).
+  * For doubles: at least one Fake Out user and at least one form of redirection (Rage Powder, Follow Me) or setup protection.
+  * No more than one notable shared type weakness across the team.
+  * Each pick pulls its weight — no filler slots.
+  If the user explicitly requests "A-tier" or higher, treat it as a hard requirement and only return a fill_team action if you can honestly deliver it; otherwise explain in reply what would be needed.
 - MUST respect Species Clause: no dex_id may appear twice across the final 6-mon roster (including the ALREADY-USED DEX IDS list above).
 - MUST respect Item Clause: no item may be held by two Pokémon across the final roster (including ALREADY-HELD ITEMS above). Pick different items even when suggesting similar sets.
 - If the user asks how to PLAY the team or strategy questions, set action = "none" and put the answer in reply. Cover: lead selection, win conditions, turn 1 plays, key matchups, and common sequencing.

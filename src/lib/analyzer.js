@@ -55,7 +55,12 @@ export function analyzeTeam({ team, format, typeAnalysis }) {
     weak: typeAnalysis[t].weak,
     resist: typeAnalysis[t].resist + typeAnalysis[t].immune,
   }));
-  const criticalHoles = weaknesses.filter((w) => w.weak >= 3 || (w.weak >= 2 && w.resist === 0));
+  // A "critical hole" = a type where you'll struggle to bring a resist AND
+  // multiple picks are weak. The old `weak >= 3` rule fired on nearly every
+  // team; this stricter version only flags real coverage gaps.
+  const criticalHoles = weaknesses.filter(
+    (w) => (w.weak >= 4) || (w.weak >= 3 && w.resist < 2) || (w.weak >= 2 && w.resist === 0)
+  );
   const totalResists = weaknesses.reduce((sum, w) => sum + Math.max(0, w.resist - 1), 0);
 
   // ---- archetype detection ------------------------------------------------
@@ -171,14 +176,25 @@ export function analyzeTeam({ team, format, typeAnalysis }) {
   if (suggestions.length === 0) suggestions.push("Team structure is sound — focus on EV tuning and move selection.");
 
   // ---- grade --------------------------------------------------------------
-  let score = 80;
-  score -= criticalHoles.length * 7;
-  score -= concentratedTypes.length * 5;
-  if (fakeOutUsers.length === 0 && format === "doubles") score -= 8;
-  if (!tailwinders.length && !trickRoomers.length && !scarfers.length) score -= 8;
-  if (mons.length < 6) score -= (6 - mons.length) * 3;
-  score += Math.min(10, tailwinders.length * 3 + trickRoomers.length * 3 + redirection.length * 3);
-  score += Math.min(6, intimidators.length * 3);
+  // Starting score 85 means a well-rounded 6-mon team with fundamentals
+  // reaches A easily; penalties bring real issues down to B/C/D/F.
+  let score = 85;
+  score -= criticalHoles.length * 6;
+  score -= concentratedTypes.length * 4;
+  if (fakeOutUsers.length === 0 && format === "doubles") score -= 6;
+  if (!tailwinders.length && !trickRoomers.length && !scarfers.length && !priorityUsers.length) score -= 6;
+  if (mons.length < 6) score -= (6 - mons.length) * 4;
+
+  // Bonuses — cohesive structure should pull teams to A.
+  if (tailwinders.length >= 1 || trickRoomers.length >= 1 || scarfers.length >= 1) score += 3;
+  if (fakeOutUsers.length >= 1 && format === "doubles") score += 3;
+  if (redirection.length >= 1 && format === "doubles") score += 3;
+  if (intimidators.length >= 1) score += 2;
+  if (priorityUsers.length >= 2) score += 2;
+  if (totalResists >= 12) score += 2;
+  // Clear archetype identity (not "Balanced Goodstuffs") shows commitment.
+  if (archetype !== "Balanced Goodstuffs") score += 2;
+
   score = Math.max(40, Math.min(100, score));
   const overall_grade = score >= 90 ? "A" : score >= 80 ? "B" : score >= 70 ? "C" : score >= 60 ? "D" : "F";
 

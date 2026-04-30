@@ -470,7 +470,7 @@ export default function App() {
 
       const weaknessSummary = TYPES
         .map((t) => ({ type: t, weak: typeAnalysis[t].weak, resist: typeAnalysis[t].resist + typeAnalysis[t].immune }))
-        .filter((w) => w.weak >= 3 || (w.weak >= 2 && w.resist === 0));
+        .filter((w) => w.weak >= 4 || (w.weak >= 3 && w.resist < 2) || (w.weak >= 2 && w.resist === 0));
 
       // Pull the current live ruleset via Google Search grounding. Cached for
       // 24h so repeated analyses don't refetch. If this fails we fall through
@@ -495,6 +495,15 @@ ${JSON.stringify(teamSummary, null, 2)}
 
 Team-wide defensive concerns (3+ Pokémon weak, OR 2 weak with 0 resists):
 ${JSON.stringify(weaknessSummary, null, 2)}
+
+GRADING RUBRIC — use this scale honestly, do not default-anchor at B:
+- **A**: Coherent archetype (sun/rain/TR/tailwind/hyper offense), all 6 slots synergize, speed control present, Fake Out/redirection covered (for doubles), at most one minor type hole, recognizable top-tier meta presence. If this team were brought to a major tournament and would not obviously embarrass the player, it is at least A-.
+- **B**: Solid team with one clear structural gap (e.g. missing Fake Out OR one 3-way type hole OR over-stacked types). Still viable on ladder.
+- **C**: Multiple structural gaps OR an unclear win condition OR 2+ critical type holes.
+- **D**: Incomplete (<5 mons) OR multiple illegal picks OR no win condition.
+- **F**: Actively broken — illegal, duplicate species/items, or 3+ critical gaps.
+
+Do NOT penalize a team for "not being a tournament-winning spread" — if the fundamentals are in place, grade A. Reserve B for teams with a concrete named weakness.
 
 Respond with JSON only.`;
 
