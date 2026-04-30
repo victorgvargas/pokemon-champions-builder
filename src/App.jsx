@@ -163,12 +163,27 @@ export default function App() {
         nature,
         moves: topMoves,
       });
+
+      // Item Clause: pick the first meta-usage item that isn't already held
+      // elsewhere on the team. Null if every option is taken.
+      const usedItems = new Set(
+        prev.filter((s, i) => i !== activeSlotIdx && s.pokemon && s.item).map((s) => s.item.toLowerCase())
+      );
+      let chosenItem = null;
+      for (const it of pkm.items || []) {
+        if (!it?.name) continue;
+        if (!usedItems.has(it.name.toLowerCase())) {
+          chosenItem = it.name;
+          break;
+        }
+      }
+
       next[activeSlotIdx] = {
         ...next[activeSlotIdx],
         pokemon: mergedPokemon,
         detail,
         ability: pkm.abilities?.[0]?.name || detail.abilities?.[0]?.name || null,
-        item: pkm.items?.[0]?.name || null,
+        item: chosenItem,
         moves: topMoves.concat([null, null, null, null]).slice(0, 4),
         nature,
         sp,
@@ -239,6 +254,13 @@ export default function App() {
 
     setTeam((prev) => {
       const next = [...prev];
+      // Running set of items already held across the final roster. Seeded with
+      // items on previously-placed slots; updated as we place each new pick so
+      // two fills in the same batch can't claim the same item either.
+      const usedItems = new Set(
+        next.filter((s) => s.pokemon && s.item).map((s) => s.item.toLowerCase())
+      );
+
       details.forEach(({ f, detail }, i) => {
         const slotIdx = emptyIdxs[i];
         if (!detail) return;
@@ -268,12 +290,30 @@ export default function App() {
           nature,
           moves: moveNames,
         });
+
+        // Pick the first non-colliding item. Order: AI suggestion → meta
+        // usage list (top to bottom). If every candidate is taken, leave
+        // the slot's item null so the user fills it in manually.
+        const candidates = [];
+        if (f.item) candidates.push(f.item);
+        for (const it of metaEntry?.items || []) candidates.push(it.name);
+        let chosenItem = null;
+        for (const cand of candidates) {
+          if (!cand) continue;
+          const key = cand.toLowerCase();
+          if (!usedItems.has(key)) {
+            chosenItem = cand;
+            usedItems.add(key);
+            break;
+          }
+        }
+
         next[slotIdx] = {
           ...next[slotIdx],
           pokemon,
           detail,
           ability,
-          item: f.item || metaEntry?.items?.[0]?.name || null,
+          item: chosenItem,
           moves,
           nature,
           sp,
@@ -382,7 +422,7 @@ export default function App() {
     try { localStorage.removeItem("pc_rules_v1"); } catch { /* ignore */ }
     try {
       await loadAll(true);
-      if (hasApiKey()) await getCurrentRules({ force: true }).catch(() => {});
+      if (hasApiKey()) await getCurrentRules({ force: true }).catch(() => { });
     } catch (e) {
       setDataError(e.message || "Refresh failed");
     } finally {
@@ -540,30 +580,26 @@ Respond with JSON only.`;
               <div className="flex border border-white/15 rounded-sm overflow-hidden">
                 <button
                   onClick={() => setFormat("singles")}
-                  className={`px-4 py-2 text-xs tracking-widest uppercase font-bold transition ${
-                    format === "singles" ? "bg-rose-500 text-white" : "text-stone-400 hover:text-white"
-                  }`}
+                  className={`px-4 py-2 text-xs tracking-widest uppercase font-bold transition ${format === "singles" ? "bg-rose-500 text-white" : "text-stone-400 hover:text-white"
+                    }`}
                 >Singles 6→3</button>
                 <button
                   onClick={() => setFormat("doubles")}
-                  className={`px-4 py-2 text-xs tracking-widest uppercase font-bold transition ${
-                    format === "doubles" ? "bg-rose-500 text-white" : "text-stone-400 hover:text-white"
-                  }`}
+                  className={`px-4 py-2 text-xs tracking-widest uppercase font-bold transition ${format === "doubles" ? "bg-rose-500 text-white" : "text-stone-400 hover:text-white"
+                    }`}
                 >Doubles 6→4</button>
               </div>
 
               <div className="flex border border-white/15 rounded-sm overflow-hidden">
                 <button
                   onClick={() => setView("builder")}
-                  className={`px-3 py-2 text-xs tracking-widest uppercase font-bold transition ${
-                    view === "builder" ? "bg-white/10 text-white" : "text-stone-400 hover:text-white"
-                  }`}
+                  className={`px-3 py-2 text-xs tracking-widest uppercase font-bold transition ${view === "builder" ? "bg-white/10 text-white" : "text-stone-400 hover:text-white"
+                    }`}
                 >Builder</button>
                 <button
                   onClick={() => setView("analysis")}
-                  className={`px-3 py-2 text-xs tracking-widest uppercase font-bold transition flex items-center gap-1 ${
-                    view === "analysis" ? "bg-white/10 text-white" : "text-stone-400 hover:text-white"
-                  }`}
+                  className={`px-3 py-2 text-xs tracking-widest uppercase font-bold transition flex items-center gap-1 ${view === "analysis" ? "bg-white/10 text-white" : "text-stone-400 hover:text-white"
+                    }`}
                 >
                   <Sparkles size={12} /> Analysis
                 </button>
@@ -572,11 +608,10 @@ Respond with JSON only.`;
               <button
                 onClick={() => setChatOpen((o) => !o)}
                 title="Team Coach chat"
-                className={`flex items-center gap-2 px-3 py-2 border text-xs tracking-widest uppercase font-bold transition ${
-                  chatOpen
+                className={`flex items-center gap-2 px-3 py-2 border text-xs tracking-widest uppercase font-bold transition ${chatOpen
                     ? "border-rose-500/60 bg-rose-500/10 text-white"
                     : "border-white/15 hover:border-rose-500/60"
-                }`}
+                  }`}
               >
                 <MessageCircle size={12} /> Coach
               </button>
