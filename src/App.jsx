@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Sparkles, AlertTriangle, RefreshCw, Database, Trash2 } from "lucide-react";
+import { Sparkles, AlertTriangle, RefreshCw, Database, Trash2, MessageCircle } from "lucide-react";
 import {
   getResolvedMeta, getAllPokemonList, getPokemonDetail, refreshMeta, clearAllCaches,
 } from "./lib/data.js";
@@ -7,10 +7,12 @@ import {
   TYPES, TYPE_COLORS, getDefensiveMultiplier,
 } from "./lib/types.js";
 import { analyzeTeam } from "./lib/analyzer.js";
+import { callGemini, hasApiKey } from "./lib/gemini.js";
 import SlotCard from "./components/SlotCard.jsx";
 import TypeCoveragePanel from "./components/TypeCoveragePanel.jsx";
 import AnalysisView from "./components/AnalysisView.jsx";
 import PokemonBrowser from "./components/PokemonBrowser.jsx";
+import Chatbot from "./components/Chatbot.jsx";
 
 // Empty slot factory.
 function createSlot() {
@@ -34,6 +36,7 @@ export default function App() {
   const [analysis, setAnalysis] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState(null);
+  const [chatOpen, setChatOpen] = useState(false);
 
   // Data state
   const [meta, setMeta] = useState(null);
@@ -101,6 +104,20 @@ export default function App() {
 
   const teamSize = team.filter((s) => s.pokemon).length;
 
+  // Global Esc: deselect the active slot. Ignore when the user is typing in
+  // an input/select/textarea — those components handle Esc themselves.
+  useEffect(() => {
+    if (activeSlotIdx === null) return;
+    function onKey(e) {
+      if (e.key !== "Escape") return;
+      const t = e.target;
+      if (t && ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName)) return;
+      setActiveSlotIdx(null);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [activeSlotIdx]);
+
   async function handleSelectPokemon(pkm) {
     if (activeSlotIdx === null) return;
 
@@ -155,6 +172,60 @@ export default function App() {
     setActiveSlotIdx(null);
     setAnalysis(null);
     setAnalysisError(null);
+  }
+
+  // Called by the chatbot when the user applies its suggested picks.
+  // fills: [{ dex_id, name, ability, item, moves[], role }]
+  // Maps picks onto empty slots in order. Returns true if anything was placed.
+  async function applyChatbotFills(fills) {
+    if (!Array.isArray(fills) || fills.length === 0) return false;
+
+    const emptyIdxs = team.map((s, i) => (s.pokemon ? null : i)).filter((i) => i !== null);
+    if (emptyIdxs.length === 0) return false;
+
+    // Fetch PokéAPI detail for each pick in parallel.
+    const picks = fills.slice(0, emptyIdxs.length);
+    const details = await Promise.all(
+      picks.map(async (f) => {
+        try { return { f, detail: await getPokemonDetail(f.dex_id) }; }
+        catch { return { f, detail: null }; }
+      })
+    );
+
+    setTeam((prev) => {
+      const next = [...prev];
+      details.forEach(({ f, detail }, i) => {
+        const slotIdx = emptyIdxs[i];
+        if (!detail) return;
+        // If the pick is in the meta pool we have rich usage data; otherwise
+        // use the AI-provided ability/item/moves directly.
+        const metaEntry = metaEntriesWithTypes.find((m) => m.dexId === f.dex_id);
+        const pokemon = {
+          dexId: f.dex_id,
+          name: f.name || detail.name,
+          types: metaEntry?.types?.length ? metaEntry.types : detail.types,
+          baseStats: detail.baseStats,
+          role: f.role || metaEntry?.role || null,
+          rank: metaEntry?.rank || null,
+          usage: metaEntry?.usage || null,
+          abilities: metaEntry?.abilities || [],
+          items: metaEntry?.items || [],
+          moves: metaEntry?.moves || [],
+        };
+        const moves = (f.moves && f.moves.length ? f.moves : (metaEntry?.moves || []).slice(0, 4).map((m) => m.name))
+          .concat([null, null, null, null]).slice(0, 4);
+        next[slotIdx] = {
+          ...next[slotIdx],
+          pokemon,
+          detail,
+          ability: f.ability || metaEntry?.abilities?.[0]?.name || detail.abilities?.[0]?.name || null,
+          item: f.item || metaEntry?.items?.[0]?.name || null,
+          moves,
+        };
+      });
+      return next;
+    });
+    return true;
   }
 
   function updateSlot(idx, patch) {
@@ -244,9 +315,7 @@ export default function App() {
     // Always compute the local analysis as a baseline / fallback.
     const localResult = analyzeTeam({ team, format, typeAnalysis });
 
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    if (!apiKey) {
-      // No key → skip the LLM and show the local rule-based analysis.
+    if (!hasApiKey()) {
       setAnalysis(localResult);
       setView("analysis");
       setAnalyzing(false);
@@ -280,7 +349,6 @@ ${JSON.stringify(weaknessSummary, null, 2)}
 
 Respond with JSON only.`;
 
-      // Gemini 2.5 Flash with responseSchema for guaranteed valid JSON shape.
       const schema = {
         type: "object",
         properties: {
@@ -302,61 +370,19 @@ Respond with JSON only.`;
         ],
       };
 
-      const body = {
+      const text = await callGemini({
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
           responseMimeType: "application/json",
           responseSchema: schema,
           temperature: 0.7,
         },
-      };
+      });
 
-      // Try the best model first, fall back to a lighter one if the primary is
-      // overloaded. Retry transient errors (429/503) with exponential backoff.
-      const models = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-latest"];
-      let text = null;
-      let lastErr = null;
-      outer: for (const model of models) {
-        for (let attempt = 0; attempt < 3; attempt++) {
-          const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
-          let response;
-          try {
-            response = await fetch(url, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(body),
-            });
-          } catch (netErr) {
-            lastErr = netErr;
-            continue;
-          }
-
-          if (response.ok) {
-            const data = await response.json();
-            text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (text) break outer;
-            lastErr = new Error(`${model}: empty response`);
-            continue;
-          }
-
-          const errText = await response.text();
-          console.warn(`Gemini ${model} attempt ${attempt + 1} → ${response.status}`, errText);
-          lastErr = new Error(`${model} ${response.status}`);
-
-          // Retry only on transient failures. 4xx (400/401/403) won't recover,
-          // so bail to the next model immediately.
-          if (response.status !== 429 && response.status !== 503 && response.status !== 500) break;
-          await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
-        }
-      }
-
-      if (!text) throw lastErr || new Error("All Gemini models unavailable");
       setAnalysis(JSON.parse(text));
       setView("analysis");
     } catch (e) {
       console.error(e);
-      // On any failure, fall back to the local analyzer so the user still
-      // gets a useful breakdown.
       setAnalysis(localResult);
       setAnalysisError(`AI call failed (${e.message}) — showing local analysis.`);
       setView("analysis");
@@ -438,6 +464,18 @@ Respond with JSON only.`;
                   <Sparkles size={12} /> Analysis
                 </button>
               </div>
+
+              <button
+                onClick={() => setChatOpen((o) => !o)}
+                title="Team Coach chat"
+                className={`flex items-center gap-2 px-3 py-2 border text-xs tracking-widest uppercase font-bold transition ${
+                  chatOpen
+                    ? "border-rose-500/60 bg-rose-500/10 text-white"
+                    : "border-white/15 hover:border-rose-500/60"
+                }`}
+              >
+                <MessageCircle size={12} /> Coach
+              </button>
             </div>
           </div>
         </header>
@@ -534,6 +572,15 @@ Respond with JSON only.`;
           Updated {meta ? formatDate(meta.updatedAt) : "—"}
         </footer>
       </div>
+
+      <Chatbot
+        open={chatOpen}
+        onClose={() => setChatOpen(false)}
+        team={team}
+        format={format}
+        metaEntries={metaEntriesWithTypes}
+        onFillTeam={applyChatbotFills}
+      />
     </div>
   );
 }
