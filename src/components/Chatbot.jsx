@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { MessageCircle, Send, X, Sparkles, Loader2, Wand2 } from "lucide-react";
-import { callGemini, hasApiKey } from "../lib/gemini.js";
+import { callGemini, hasApiKey, getCurrentRules } from "../lib/gemini.js";
 
 // Tool-style response schema. The model can either reply with prose OR fill in
 // a suggested_fills array of { dex_id, name, role } entries the app will apply.
@@ -114,7 +114,16 @@ export default function Chatbot({
         top_moves: m.moves?.slice(0, 4).map((a) => a.name),
       }));
 
-      const systemPrompt = `You are an expert Pokémon Champions VGC coach for ${format === "doubles" ? "Doubles (VGC)" : "Singles"} format under Regulation Set M-A (Mega Evolutions allowed).
+      // Live ruleset via grounded search. Cached; fails gracefully.
+      let rulesBlock = "";
+      try {
+        const rules = await getCurrentRules();
+        rulesBlock = `CURRENT OFFICIAL RULES (live-sourced, treat as authoritative for legality and mechanics):\n${rules}\n\n`;
+      } catch (err) {
+        console.warn("Chatbot: rules fetch failed", err);
+      }
+
+      const systemPrompt = `${rulesBlock}You are an expert Pokémon Champions VGC coach for ${format === "doubles" ? "Doubles (VGC)" : "Singles"} format. Anchor every legality / mechanics claim to the CURRENT OFFICIAL RULES block above.
 
 CURRENT TEAM (${currentTeam.length}/6 filled):
 ${JSON.stringify(currentTeam, null, 2)}

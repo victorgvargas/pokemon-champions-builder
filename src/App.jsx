@@ -7,7 +7,8 @@ import {
   TYPES, TYPE_COLORS, getDefensiveMultiplier,
 } from "./lib/types.js";
 import { analyzeTeam } from "./lib/analyzer.js";
-import { callGemini, hasApiKey } from "./lib/gemini.js";
+import { callGemini, hasApiKey, getCurrentRules } from "./lib/gemini.js";
+import { suggestSpread, suggestNature } from "./lib/spreads.js";
 import SlotCard from "./components/SlotCard.jsx";
 import TypeCoveragePanel from "./components/TypeCoveragePanel.jsx";
 import AnalysisView from "./components/AnalysisView.jsx";
@@ -145,13 +146,24 @@ export default function App() {
         items: pkm.items || [],
         moves: pkm.moves || [],
       };
+      const topMoves = (pkm.moves || []).slice(0, 4).map((m) => m.name);
+      const nature = suggestNature({ base: detail.baseStats, moves: topMoves, role: pkm.role });
+      const sp = suggestSpread({
+        base: detail.baseStats,
+        role: pkm.role,
+        ability: pkm.abilities?.[0]?.name,
+        nature,
+        moves: topMoves,
+      });
       next[activeSlotIdx] = {
         ...next[activeSlotIdx],
         pokemon: mergedPokemon,
         detail,
         ability: pkm.abilities?.[0]?.name || detail.abilities?.[0]?.name || null,
         item: pkm.items?.[0]?.name || null,
-        moves: (pkm.moves || []).slice(0, 4).map((m) => m.name).concat([null, null, null, null]).slice(0, 4),
+        moves: topMoves.concat([null, null, null, null]).slice(0, 4),
+        nature,
+        sp,
       };
       return next;
     });
@@ -212,15 +224,26 @@ export default function App() {
           items: metaEntry?.items || [],
           moves: metaEntry?.moves || [],
         };
-        const moves = (f.moves && f.moves.length ? f.moves : (metaEntry?.moves || []).slice(0, 4).map((m) => m.name))
-          .concat([null, null, null, null]).slice(0, 4);
+        const moveNames = (f.moves && f.moves.length ? f.moves : (metaEntry?.moves || []).slice(0, 4).map((m) => m.name));
+        const moves = moveNames.concat([null, null, null, null]).slice(0, 4);
+        const ability = f.ability || metaEntry?.abilities?.[0]?.name || detail.abilities?.[0]?.name || null;
+        const nature = suggestNature({ base: detail.baseStats, moves: moveNames, role: pokemon.role });
+        const sp = suggestSpread({
+          base: detail.baseStats,
+          role: pokemon.role,
+          ability,
+          nature,
+          moves: moveNames,
+        });
         next[slotIdx] = {
           ...next[slotIdx],
           pokemon,
           detail,
-          ability: f.ability || metaEntry?.abilities?.[0]?.name || detail.abilities?.[0]?.name || null,
+          ability,
           item: f.item || metaEntry?.items?.[0]?.name || null,
           moves,
+          nature,
+          sp,
         };
       });
       return next;
@@ -287,12 +310,15 @@ export default function App() {
   }
 
   async function handleHardRefresh() {
-    if (!confirm("Clear all cached data (meta + PokéAPI) and refetch?")) return;
+    if (!confirm("Clear all cached data (meta + PokéAPI + rules) and refetch?")) return;
     setRefreshing(true);
     clearAllCaches();
     setMetaDetails({});
+    // Also drop the live-rules cache so the next AI call re-searches.
+    try { localStorage.removeItem("pc_rules_v1"); } catch { /* ignore */ }
     try {
       await loadAll(true);
+      if (hasApiKey()) await getCurrentRules({ force: true }).catch(() => {});
     } catch (e) {
       setDataError(e.message || "Refresh failed");
     } finally {
@@ -339,7 +365,21 @@ export default function App() {
         .map((t) => ({ type: t, weak: typeAnalysis[t].weak, resist: typeAnalysis[t].resist + typeAnalysis[t].immune }))
         .filter((w) => w.weak >= 3 || (w.weak >= 2 && w.resist === 0));
 
-      const prompt = `You are a Pokémon Champions VGC expert analyzing a competitive team for ${format === "doubles" ? "Doubles (VGC, bring 6 pick 4)" : "Singles (bring 6 pick 3)"} format under Regulation Set M-A (Mega Evolutions allowed, SP system: 66 SP total, max 32 per stat).
+      // Pull the current live ruleset via Google Search grounding. Cached for
+      // 24h so repeated analyses don't refetch. If this fails we fall through
+      // to the static wording — the analysis still works.
+      let rulesBlock = "";
+      try {
+        const rules = await getCurrentRules();
+        rulesBlock = `CURRENT OFFICIAL RULES (live-sourced, treat as authoritative):
+${rules}
+
+`;
+      } catch (rulesErr) {
+        console.warn("Rules fetch failed, falling back:", rulesErr);
+      }
+
+      const prompt = `${rulesBlock}You are a Pokémon Champions VGC expert analyzing a competitive team for ${format === "doubles" ? "Doubles (VGC, bring 6 pick 4)" : "Singles (bring 6 pick 3)"} format. Base every rules-dependent judgment (legality, SP limits, Mega/Tera/Z/Dynamax availability, banned categories) on the "CURRENT OFFICIAL RULES" block above. If the team contains an illegal pick for the current regulation, flag it in weaknesses.
 
 The team:
 ${JSON.stringify(teamSummary, null, 2)}
