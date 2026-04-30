@@ -21,4 +21,12 @@ npm run dev
 
 ## Team analysis
 
-Rule-based analyzer that runs entirely client-side — no API, no key, works offline. Scores archetype, speed control, redirection, Fake Out presence, type holes, threats, and suggestions directly from the team.
+Uses **Gemini 2.5 Flash** (free tier) for LLM-powered team analysis — archetype, strengths, weaknesses, speed control, threats, suggestions.
+
+1. Get a free key at [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey).
+2. Copy `.env.example` → `.env.local` and set `VITE_GEMINI_API_KEY`.
+3. Restart `npm run dev`.
+
+If the key is missing or the API fails, the app automatically falls back to a local rule-based analyzer so the feature always works.
+
+> ⚠️ Gemini enforces a daily free-tier quota. If you deploy this publicly, put the key behind a serverless proxy instead of shipping it in `VITE_*` env vars (bundled keys are visible to every user).

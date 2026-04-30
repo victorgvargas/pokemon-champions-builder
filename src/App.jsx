@@ -221,29 +221,113 @@ export default function App() {
     }
   }
 
-  function runAIAnalysis() {
+  async function runAIAnalysis() {
     setAnalyzing(true);
     setAnalysisError(null);
     setAnalysis(null);
-    // Run on next tick so the "analyzing" spinner flashes visibly even though
-    // the analysis itself is synchronous and instant.
-    setTimeout(() => {
-      try {
-        const filled = team.filter((s) => s.pokemon);
-        if (filled.length === 0) {
-          setAnalysisError("Add at least one Pokémon before running analysis.");
-          return;
-        }
-        const result = analyzeTeam({ team, format, typeAnalysis });
-        setAnalysis(result);
-        setView("analysis");
-      } catch (e) {
-        console.error(e);
-        setAnalysisError(e.message || "Analysis failed.");
-      } finally {
-        setAnalyzing(false);
+
+    const filled = team.filter((s) => s.pokemon);
+    if (filled.length === 0) {
+      setAnalysisError("Add at least one Pokémon before running analysis.");
+      setAnalyzing(false);
+      return;
+    }
+
+    // Always compute the local analysis as a baseline / fallback.
+    const localResult = analyzeTeam({ team, format, typeAnalysis });
+
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    if (!apiKey) {
+      // No key → skip the LLM and show the local rule-based analysis.
+      setAnalysis(localResult);
+      setView("analysis");
+      setAnalyzing(false);
+      return;
+    }
+
+    try {
+      const teamSummary = filled.map((s, i) => ({
+        slot: i + 1,
+        name: s.pokemon.name,
+        types: s.pokemon.types,
+        role: s.pokemon.role,
+        ability: s.ability,
+        item: s.item,
+        moves: s.moves.filter(Boolean),
+        sp: s.sp,
+        nature: s.nature,
+      }));
+
+      const weaknessSummary = TYPES
+        .map((t) => ({ type: t, weak: typeAnalysis[t].weak, resist: typeAnalysis[t].resist + typeAnalysis[t].immune }))
+        .filter((w) => w.weak >= 3 || (w.weak >= 2 && w.resist === 0));
+
+      const prompt = `You are a Pokémon Champions VGC expert analyzing a competitive team for ${format === "doubles" ? "Doubles (VGC, bring 6 pick 4)" : "Singles (bring 6 pick 3)"} format under Regulation Set M-A (Mega Evolutions allowed, SP system: 66 SP total, max 32 per stat).
+
+The team:
+${JSON.stringify(teamSummary, null, 2)}
+
+Team-wide defensive concerns (3+ Pokémon weak, OR 2 weak with 0 resists):
+${JSON.stringify(weaknessSummary, null, 2)}
+
+Respond with JSON only.`;
+
+      // Gemini 2.5 Flash with responseSchema for guaranteed valid JSON shape.
+      const schema = {
+        type: "object",
+        properties: {
+          overall_grade: { type: "string", enum: ["A", "B", "C", "D", "F"] },
+          archetype: { type: "string" },
+          strengths: { type: "array", items: { type: "string" } },
+          weaknesses: { type: "array", items: { type: "string" } },
+          speed_control: { type: "string" },
+          fake_out_users: { type: "string" },
+          redirection: { type: "string" },
+          type_coverage: { type: "string" },
+          key_threats: { type: "array", items: { type: "string" } },
+          suggestions: { type: "array", items: { type: "string" } },
+        },
+        required: [
+          "overall_grade", "archetype", "strengths", "weaknesses",
+          "speed_control", "fake_out_users", "redirection",
+          "type_coverage", "key_threats", "suggestions",
+        ],
+      };
+
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: schema,
+            temperature: 0.7,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error("Gemini error:", errText);
+        throw new Error(`Gemini ${response.status}`);
       }
-    }, 150);
+      const data = await response.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) throw new Error("Empty response");
+      setAnalysis(JSON.parse(text));
+      setView("analysis");
+    } catch (e) {
+      console.error(e);
+      // On any failure, fall back to the local analyzer so the user still
+      // gets a useful breakdown.
+      setAnalysis(localResult);
+      setAnalysisError(`AI call failed (${e.message}) — showing local analysis.`);
+      setView("analysis");
+    } finally {
+      setAnalyzing(false);
+    }
   }
 
   const pickInBattle = format === "doubles" ? 4 : 3;
@@ -351,7 +435,7 @@ export default function App() {
                     className="btn-primary px-4 py-2 text-xs flex items-center gap-2 rounded-sm"
                   >
                     <Sparkles size={14} />
-                    {analyzing ? "ANALYZING..." : "ANALYZE TEAM"}
+                    {analyzing ? "ANALYZING..." : "AI ANALYZE TEAM"}
                   </button>
                 </div>
 
