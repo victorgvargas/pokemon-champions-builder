@@ -271,23 +271,24 @@ Provide a structured analysis. Respond with ONLY valid JSON in this exact shape,
   "suggestions": ["3-5 items"]
 }`;
 
-      // Pollinations.ai — free, keyless, CORS-enabled OpenAI-compatible endpoint.
-      const response = await fetch("https://text.pollinations.ai/openai", {
+      // Pollinations.ai — free, keyless, CORS-enabled text endpoint.
+      // The `json: true` flag makes the body be the model's JSON response
+      // directly (no OpenAI envelope).
+      const response = await fetch("https://text.pollinations.ai/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: "openai",
+          json: true,
           messages: [
             { role: "system", content: "You are a Pokémon Champions VGC expert. Respond with ONLY valid JSON, no markdown fences, no preamble." },
             { role: "user", content: prompt },
           ],
-          response_format: { type: "json_object" },
         }),
       });
 
       if (!response.ok) throw new Error(`AI service error: ${response.status}`);
-      const data = await response.json();
-      const raw = data.choices?.[0]?.message?.content || "";
+      const raw = await response.text();
       const parsed = parseLooseJSON(raw);
       if (!parsed) {
         console.error("Unparseable AI response:", raw);
