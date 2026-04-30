@@ -47,7 +47,8 @@ function toMarkdown(a, team, format) {
 
   return `# Team Analysis
 
-**Format:** ${format} (Reg M-A)
+**Game:** Pokémon Champions
+**Format:** ${format}
 **Overall Grade:** ${a.overall_grade}
 **Archetype:** ${a.archetype}
 **Exported:** ${new Date().toISOString()}
@@ -133,7 +134,7 @@ export default function AnalysisView({
           {grade}
         </div>
         <div className="flex-1">
-          <div className="text-[10px] tracking-widest text-stone-500 uppercase">Overall Grade · {format} · Reg M-A</div>
+          <div className="text-[10px] tracking-widest text-stone-500 uppercase">Overall Grade · Pokémon Champions · {format}</div>
           <div className="display-font text-3xl tracking-wider mt-1">{analysis.archetype}</div>
           <div className="flex items-center gap-3 mt-2 flex-wrap">
             <button

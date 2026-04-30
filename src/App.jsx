@@ -419,7 +419,10 @@ export default function App() {
     clearAllCaches();
     setMetaDetails({});
     // Also drop the live-rules cache so the next AI call re-searches.
-    try { localStorage.removeItem("pc_rules_v1"); } catch { /* ignore */ }
+    try {
+      localStorage.removeItem("pc_rules_v1");
+      localStorage.removeItem("pc_rules_v2");
+    } catch { /* ignore */ }
     try {
       await loadAll(true);
       if (hasApiKey()) await getCurrentRules({ force: true }).catch(() => { });
@@ -483,7 +486,9 @@ ${rules}
         console.warn("Rules fetch failed, falling back:", rulesErr);
       }
 
-      const prompt = `${rulesBlock}You are a Pokémon Champions VGC expert analyzing a competitive team for ${format === "doubles" ? "Doubles (VGC, bring 6 pick 4)" : "Singles (bring 6 pick 3)"} format. Base every rules-dependent judgment (legality, SP limits, Mega/Tera/Z/Dynamax availability, banned categories) on the "CURRENT OFFICIAL RULES" block above. If the team contains an illegal pick for the current regulation, flag it in weaknesses.
+      const prompt = `${rulesBlock}You are an expert competitive coach for the game **Pokémon Champions** (NOT mainline Pokémon VGC — the two games have different mechanics, different SP/EV systems, different Mega/Tera availability, different ban lists, and different format rules). Analyze the following team for ${format === "doubles" ? "Doubles (bring 6, select 4 per match)" : "Singles (bring 6, select 3 per match)"} format.
+
+Base every rules-dependent judgment (legality, SP limits, Mega/Tera/Z/Dynamax availability, banned Pokémon categories, item/species clauses) STRICTLY on the "CURRENT OFFICIAL RULES" block above — do NOT import assumptions from mainline Pokémon VGC regulations. If the team contains an illegal pick for the current Pokémon Champions regulation, flag it in weaknesses.
 
 The team:
 ${JSON.stringify(teamSummary, null, 2)}

@@ -20,7 +20,7 @@ export function hasApiKey() {
 let rulesCache = null;
 let rulesPromise = null;
 
-const RULES_CACHE_KEY = "pc_rules_v1";
+const RULES_CACHE_KEY = "pc_rules_v2";
 const RULES_TTL_MS = 24 * 60 * 60 * 1000; // 1 day
 
 function loadRulesFromStorage() {
@@ -49,16 +49,16 @@ export async function getCurrentRules({ force = false } = {}) {
   }
   if (rulesPromise) return rulesPromise;
 
-  const prompt = `Search for the CURRENT competitive rules for Pokémon Champions (the official VGC-style ranked battle game). As of ${new Date().toISOString().slice(0, 10)}, report:
+  const prompt = `Search the web for the CURRENT competitive rules for the video game "Pokémon Champions" (the standalone competitive battle game, NOT mainline Pokémon Scarlet/Violet/SwSh VGC — those are different games with different rules). As of ${new Date().toISOString().slice(0, 10)}, report for Pokémon Champions specifically:
 - The active Regulation Set (letter/name) and its start/end dates.
-- Whether Mega Evolutions, Z-Moves, Terastallization, or Dynamax are allowed.
-- SP / EV system limits (total SP, per-stat cap).
+- Whether Mega Evolutions, Z-Moves, Terastallization, or Dynamax are currently allowed in Pokémon Champions.
+- SP system limits (total SP budget and per-stat cap, as used in Pokémon Champions — NOT mainline EVs).
 - Level cap and battle format (singles / doubles).
-- Species Clause / Item Clause status.
-- Any currently banned or disallowed Pokémon categories (Legendaries, Paradox, Restricted, Mythicals).
-- Any very recent rule changes in the last 30 days.
+- Species Clause / Item Clause status in Pokémon Champions.
+- Currently banned or disallowed Pokémon categories in Pokémon Champions (Legendaries, Paradox, Restricted, Mythicals, form-specific restrictions).
+- Any very recent Pokémon Champions rule changes in the last 30 days.
 
-Reply as a concise plaintext bulleted summary (no markdown headers, no JSON, no preamble). 200 words max.`;
+If a piece of information is not explicitly about Pokémon Champions (the standalone game), say "unknown" rather than borrowing from mainline VGC. Reply as a concise plaintext bulleted summary (no markdown headers, no JSON, no preamble). 250 words max.`;
 
   const apiKey = getApiKey();
   if (!apiKey) throw new Error("No Gemini API key configured");

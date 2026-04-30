@@ -129,7 +129,9 @@ export default function Chatbot({
       }).filter(Boolean);
       const usedItems = currentTeam.map((m) => m.item).filter(Boolean);
 
-      const systemPrompt = `${rulesBlock}You are an expert Pokémon Champions VGC coach for ${format === "doubles" ? "Doubles (VGC)" : "Singles"} format. Anchor every legality / mechanics claim to the CURRENT OFFICIAL RULES block above.
+      const systemPrompt = `${rulesBlock}You are an expert competitive coach for the game **Pokémon Champions** (NOT mainline Pokémon VGC — those are different games with different mechanics, ban lists, and SP/EV rules). Current format: ${format === "doubles" ? "Doubles (bring 6, select 4)" : "Singles (bring 6, select 3)"}.
+
+Anchor every legality, mechanics, and regulation claim STRICTLY to the CURRENT OFFICIAL RULES block above. Do NOT apply rules from mainline Pokémon VGC (Scarlet/Violet VGC, SwSh VGC, etc.) unless the rules block explicitly says they apply.
 
 CURRENT TEAM (${currentTeam.length}/6 filled):
 ${JSON.stringify(currentTeam, null, 2)}
