@@ -267,9 +267,22 @@ export default function App() {
         // If the pick is in the meta pool we have rich usage data; otherwise
         // use the AI-provided ability/item/moves directly.
         const metaEntry = metaEntriesWithTypes.find((m) => m.dexId === f.dex_id);
+
+        // Gemini sometimes hallucinates name/dex_id mismatches (e.g. calls
+        // dex_id 3 "Incineroar"). PokéAPI is authoritative for what dex_id
+        // corresponds to what species, so trust detail.name over f.name
+        // when they disagree.
+        const aiName = (f.name || "").trim().toLowerCase();
+        const apiName = (detail.name || "").trim().toLowerCase();
+        const nameMismatch = aiName && apiName && aiName !== apiName;
+        if (nameMismatch) {
+          console.warn(`Chatbot fill mismatch: claimed "${f.name}" but dex_id ${f.dex_id} is ${detail.name}. Using API name.`);
+        }
+        const canonicalName = detail.name || f.name;
+
         const pokemon = {
           dexId: f.dex_id,
-          name: f.name || detail.name,
+          name: canonicalName,
           types: metaEntry?.types?.length ? metaEntry.types : detail.types,
           baseStats: detail.baseStats,
           role: f.role || metaEntry?.role || null,

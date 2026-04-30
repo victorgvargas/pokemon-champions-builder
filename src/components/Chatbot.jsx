@@ -146,6 +146,7 @@ ${JSON.stringify(pool)}
 
 Behavior:
 - If the user asks to BUILD or FILL the team (full team, specific archetype like "sun", "trick room", "rain", "tailwind offense", OR they ask for a tier/quality like "A-tier", "S-tier", "tournament-ready"), set action = "fill_team" and put one pick per empty slot in suggested_fills. Prefer meta Pokémon. Use dex_ids from the META POOL above. For each pick include role, ability, item, and 4 moves.
+- CRITICAL: the name and dex_id in each suggested_fill MUST match exactly — copy both fields verbatim from the META POOL entry. Never pair a name with a different Pokémon's dex_id (e.g. don't write name="Incineroar" with dex_id=3). If you're not 100% sure of the dex_id, pick a different meta Pokémon instead.
 - When filling, AIM FOR A-TIER BY DEFAULT unless the user specifies otherwise. A-tier means:
   * Coherent archetype (sun / rain / TR / tailwind / hyper offense / Fake Out control).
   * Speed control present (Tailwind, Trick Room, Choice Scarf, or priority).
