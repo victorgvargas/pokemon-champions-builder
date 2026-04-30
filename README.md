@@ -19,6 +19,6 @@ npm install
 npm run dev
 ```
 
-## AI analysis
+## Team analysis
 
-Uses [Pollinations.ai](https://pollinations.ai) — free, keyless, public. No setup required.
+Rule-based analyzer that runs entirely client-side — no API, no key, works offline. Scores archetype, speed control, redirection, Fake Out presence, type holes, threats, and suggestions directly from the team.

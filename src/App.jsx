@@ -6,6 +6,7 @@ import {
 import {
   TYPES, TYPE_COLORS, getDefensiveMultiplier,
 } from "./lib/types.js";
+import { analyzeTeam } from "./lib/analyzer.js";
 import SlotCard from "./components/SlotCard.jsx";
 import TypeCoveragePanel from "./components/TypeCoveragePanel.jsx";
 import AnalysisView from "./components/AnalysisView.jsx";
@@ -220,88 +221,29 @@ export default function App() {
     }
   }
 
-  async function runAIAnalysis() {
+  function runAIAnalysis() {
     setAnalyzing(true);
     setAnalysisError(null);
     setAnalysis(null);
-    try {
-      const teamSummary = team
-        .filter((s) => s.pokemon)
-        .map((s, i) => ({
-          slot: i + 1,
-          name: s.pokemon.name,
-          types: s.pokemon.types,
-          role: s.pokemon.role,
-          ability: s.ability,
-          item: s.item,
-          moves: s.moves.filter(Boolean),
-          sp: s.sp,
-          nature: s.nature,
-        }));
-
-      if (teamSummary.length === 0) {
-        setAnalysisError("Add at least one Pokémon before running analysis.");
+    // Run on next tick so the "analyzing" spinner flashes visibly even though
+    // the analysis itself is synchronous and instant.
+    setTimeout(() => {
+      try {
+        const filled = team.filter((s) => s.pokemon);
+        if (filled.length === 0) {
+          setAnalysisError("Add at least one Pokémon before running analysis.");
+          return;
+        }
+        const result = analyzeTeam({ team, format, typeAnalysis });
+        setAnalysis(result);
+        setView("analysis");
+      } catch (e) {
+        console.error(e);
+        setAnalysisError(e.message || "Analysis failed.");
+      } finally {
         setAnalyzing(false);
-        return;
       }
-
-      const weaknessSummary = TYPES
-        .map((t) => ({ type: t, weak: typeAnalysis[t].weak, resist: typeAnalysis[t].resist + typeAnalysis[t].immune }))
-        .filter((w) => w.weak >= 3 || (w.weak >= 2 && w.resist === 0));
-
-      const prompt = `You are a Pokémon Champions VGC expert analyzing a competitive team for ${format === "doubles" ? "Doubles (VGC, bring 6 pick 4)" : "Singles (bring 6 pick 3)"} format under Regulation Set M-A (Mega Evolutions allowed, SP system: 66 SP total, max 32 per stat).
-
-The team:
-${JSON.stringify(teamSummary, null, 2)}
-
-Team-wide defensive concerns (3+ Pokémon weak, OR 2 weak with 0 resists):
-${JSON.stringify(weaknessSummary, null, 2)}
-
-Provide a structured analysis. Respond with ONLY valid JSON in this exact shape, no markdown, no preamble:
-{
-  "overall_grade": "A | B | C | D | F",
-  "archetype": "string",
-  "strengths": ["3-5 bullets"],
-  "weaknesses": ["3-5 bullets"],
-  "speed_control": "string",
-  "fake_out_users": "string",
-  "redirection": "string",
-  "type_coverage": "string",
-  "key_threats": ["3-5 items"],
-  "suggestions": ["3-5 items"]
-}`;
-
-      // Pollinations.ai — free, keyless, CORS-enabled text endpoint.
-      // The `json: true` flag makes the body be the model's JSON response
-      // directly (no OpenAI envelope).
-      const response = await fetch("https://text.pollinations.ai/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "openai",
-          json: true,
-          messages: [
-            { role: "system", content: "You are a Pokémon Champions VGC expert. Respond with ONLY valid JSON, no markdown fences, no preamble." },
-            { role: "user", content: prompt },
-          ],
-        }),
-      });
-
-      if (!response.ok) throw new Error(`AI service error: ${response.status}`);
-      const raw = await response.text();
-      const parsed = parseLooseJSON(raw);
-      if (!parsed) {
-        console.error("Unparseable AI response:", raw);
-        throw new Error("AI returned malformed JSON. Try again.");
-      }
-      setAnalysis(parsed);
-      setView("analysis");
-    } catch (e) {
-      console.error(e);
-      setAnalysisError(e.message || "Analysis failed. Try again.");
-    } finally {
-      setAnalyzing(false);
-    }
+    }, 150);
   }
 
   const pickInBattle = format === "doubles" ? 4 : 3;
@@ -409,7 +351,7 @@ Provide a structured analysis. Respond with ONLY valid JSON in this exact shape,
                     className="btn-primary px-4 py-2 text-xs flex items-center gap-2 rounded-sm"
                   >
                     <Sparkles size={14} />
-                    {analyzing ? "ANALYZING..." : "AI ANALYZE TEAM"}
+                    {analyzing ? "ANALYZING..." : "ANALYZE TEAM"}
                   </button>
                 </div>
 
@@ -465,39 +407,6 @@ Provide a structured analysis. Respond with ONLY valid JSON in this exact shape,
       </div>
     </div>
   );
-}
-
-// LLMs sometimes wrap JSON in prose or code fences despite instructions.
-// Strip fences, then scan for the first balanced {...} and try to parse it.
-function parseLooseJSON(raw) {
-  if (!raw) return null;
-  const cleaned = raw.replace(/```json|```/g, "").trim();
-  try { return JSON.parse(cleaned); } catch {}
-
-  const start = cleaned.indexOf("{");
-  if (start === -1) return null;
-  let depth = 0;
-  let inStr = false;
-  let esc = false;
-  for (let i = start; i < cleaned.length; i++) {
-    const c = cleaned[i];
-    if (inStr) {
-      if (esc) esc = false;
-      else if (c === "\\") esc = true;
-      else if (c === '"') inStr = false;
-      continue;
-    }
-    if (c === '"') inStr = true;
-    else if (c === "{") depth++;
-    else if (c === "}") {
-      depth--;
-      if (depth === 0) {
-        const candidate = cleaned.slice(start, i + 1);
-        try { return JSON.parse(candidate); } catch { return null; }
-      }
-    }
-  }
-  return null;
 }
 
 function formatDate(iso) {

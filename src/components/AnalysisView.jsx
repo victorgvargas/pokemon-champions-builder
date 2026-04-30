@@ -18,9 +18,9 @@ export default function AnalysisView({
   if (!analysis) {
     return (
       <div className="panel p-8 rounded-sm">
-        <div className="display-font text-2xl tracking-wider mb-2">AI TEAM ANALYSIS</div>
+        <div className="display-font text-2xl tracking-wider mb-2">TEAM ANALYSIS</div>
         <div className="text-xs text-stone-500 tracking-wider mb-6">
-          Run analysis to get a competitive breakdown of your team's archetype, strengths, weaknesses, speed control, and threats.
+          Run analysis to get a rule-based breakdown of your team's archetype, strengths, weaknesses, speed control, and threats.
         </div>
         {analysisError && (
           <div className="panel p-3 text-xs text-rose-400 flex items-center gap-2 panel-accent mb-4">
@@ -33,7 +33,7 @@ export default function AnalysisView({
           className="btn-primary px-6 py-3 text-sm rounded-sm flex items-center gap-2"
         >
           <Sparkles size={16} />
-          {teamSize === 0 ? "ADD POKÉMON FIRST" : "RUN AI ANALYSIS"}
+          {teamSize === 0 ? "ADD POKÉMON FIRST" : "RUN ANALYSIS"}
         </button>
       </div>
     );
