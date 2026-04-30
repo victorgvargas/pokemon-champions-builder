@@ -1,5 +1,86 @@
 import React from "react";
-import { AlertTriangle, RefreshCw, Sparkles, Shield, Swords, Zap, Activity, Users, Trophy } from "lucide-react";
+import { AlertTriangle, RefreshCw, Sparkles, Shield, Swords, Zap, Activity, Users, Trophy, Download, FileText } from "lucide-react";
+
+function exportAnalysis(analysis, team, format, kind) {
+  const filled = team.filter((s) => s.pokemon).map((s) => ({
+    name: s.pokemon.name,
+    types: s.pokemon.types,
+    ability: s.ability,
+    item: s.item,
+    moves: s.moves.filter(Boolean),
+    nature: s.nature,
+    sp: s.sp,
+  }));
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+
+  let blob, filename;
+  if (kind === "json") {
+    const payload = {
+      exported_at: new Date().toISOString(),
+      format,
+      team: filled,
+      analysis,
+    };
+    blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    filename = `champions-analysis-${stamp}.json`;
+  } else {
+    blob = new Blob([toMarkdown(analysis, filled, format)], { type: "text/markdown" });
+    filename = `champions-analysis-${stamp}.md`;
+  }
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function toMarkdown(a, team, format) {
+  const bullets = (arr) => (arr || []).map((x) => `- ${x}`).join("\n");
+  const teamBlock = team.map((m, i) => {
+    const moves = m.moves.length ? m.moves.join(" / ") : "—";
+    return `### Slot ${i + 1}: ${m.name}\n- Types: ${m.types?.join(", ") || "—"}\n- Ability: ${m.ability || "—"}\n- Item: ${m.item || "—"}\n- Nature: ${m.nature}\n- Moves: ${moves}\n- SP: HP ${m.sp.hp} / Atk ${m.sp.atk} / Def ${m.sp.def} / SpA ${m.sp.spa} / SpD ${m.sp.spd} / Spe ${m.sp.spe}`;
+  }).join("\n\n");
+
+  return `# Team Analysis
+
+**Format:** ${format} (Reg M-A)
+**Overall Grade:** ${a.overall_grade}
+**Archetype:** ${a.archetype}
+**Exported:** ${new Date().toISOString()}
+
+## Team
+
+${teamBlock}
+
+## Strengths
+${bullets(a.strengths)}
+
+## Weaknesses
+${bullets(a.weaknesses)}
+
+## Speed Control
+${a.speed_control}
+
+## Fake Out Users
+${a.fake_out_users}
+
+## Redirection
+${a.redirection}
+
+## Type Coverage
+${a.type_coverage}
+
+## Key Meta Threats
+${bullets(a.key_threats)}
+
+## Suggestions
+${bullets(a.suggestions)}
+`;
+}
 
 export default function AnalysisView({
   analysis, analyzing, analysisError, runAIAnalysis, team, format, setView,
@@ -54,12 +135,28 @@ export default function AnalysisView({
         <div className="flex-1">
           <div className="text-[10px] tracking-widest text-stone-500 uppercase">Overall Grade · {format} · Reg M-A</div>
           <div className="display-font text-3xl tracking-wider mt-1">{analysis.archetype}</div>
-          <button
-            onClick={runAIAnalysis}
-            className="text-[10px] tracking-widest text-rose-400 hover:text-rose-300 uppercase mt-2 flex items-center gap-1"
-          >
-            <RefreshCw size={10} /> Re-analyze
-          </button>
+          <div className="flex items-center gap-3 mt-2 flex-wrap">
+            <button
+              onClick={runAIAnalysis}
+              className="text-[10px] tracking-widest text-rose-400 hover:text-rose-300 uppercase flex items-center gap-1"
+            >
+              <RefreshCw size={10} /> Re-analyze
+            </button>
+            <button
+              onClick={() => exportAnalysis(analysis, team, format, "md")}
+              className="text-[10px] tracking-widest text-stone-400 hover:text-white uppercase flex items-center gap-1"
+              title="Download as Markdown"
+            >
+              <FileText size={10} /> Export .md
+            </button>
+            <button
+              onClick={() => exportAnalysis(analysis, team, format, "json")}
+              className="text-[10px] tracking-widest text-stone-400 hover:text-white uppercase flex items-center gap-1"
+              title="Download as JSON"
+            >
+              <Download size={10} /> Export .json
+            </button>
+          </div>
         </div>
       </div>
 

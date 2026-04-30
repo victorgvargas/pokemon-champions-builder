@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Sparkles, AlertTriangle, RefreshCw, Database } from "lucide-react";
+import { Sparkles, AlertTriangle, RefreshCw, Database, Trash2 } from "lucide-react";
 import {
   getResolvedMeta, getAllPokemonList, getPokemonDetail, refreshMeta, clearAllCaches,
 } from "./lib/data.js";
@@ -147,6 +147,14 @@ export default function App() {
       next[idx] = createSlot();
       return next;
     });
+  }
+
+  function clearTeam() {
+    if (!confirm("Clear all 6 slots?")) return;
+    setTeam(Array(6).fill(null).map(createSlot));
+    setActiveSlotIdx(null);
+    setAnalysis(null);
+    setAnalysisError(null);
   }
 
   function updateSlot(idx, patch) {
@@ -456,14 +464,24 @@ Respond with JSON only.`;
                       {teamSize}/6 PICKED · BRING 6, SELECT {pickInBattle} IN-BATTLE
                     </div>
                   </div>
-                  <button
-                    onClick={runAIAnalysis}
-                    disabled={analyzing || teamSize === 0}
-                    className="btn-primary px-4 py-2 text-xs flex items-center gap-2 rounded-sm"
-                  >
-                    <Sparkles size={14} />
-                    {analyzing ? "ANALYZING..." : "AI ANALYZE TEAM"}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={clearTeam}
+                      disabled={teamSize === 0}
+                      title="Clear all 6 slots"
+                      className="flex items-center gap-1 px-3 py-2 border border-white/15 hover:border-rose-500/60 hover:text-rose-400 text-xs tracking-widest uppercase font-bold transition disabled:opacity-40 disabled:hover:border-white/15 disabled:hover:text-stone-400"
+                    >
+                      <Trash2 size={12} /> Clear
+                    </button>
+                    <button
+                      onClick={runAIAnalysis}
+                      disabled={analyzing || teamSize === 0}
+                      className="btn-primary px-4 py-2 text-xs flex items-center gap-2 rounded-sm"
+                    >
+                      <Sparkles size={14} />
+                      {analyzing ? "ANALYZING..." : "AI ANALYZE TEAM"}
+                    </button>
+                  </div>
                 </div>
 
                 {analysisError && (
