@@ -287,11 +287,13 @@ Provide a structured analysis. Respond with ONLY valid JSON in this exact shape,
 
       if (!response.ok) throw new Error(`AI service error: ${response.status}`);
       const data = await response.json();
-      const text = (data.choices?.[0]?.message?.content || "")
-        .replace(/```json|```/g, "")
-        .trim();
-
-      setAnalysis(JSON.parse(text));
+      const raw = data.choices?.[0]?.message?.content || "";
+      const parsed = parseLooseJSON(raw);
+      if (!parsed) {
+        console.error("Unparseable AI response:", raw);
+        throw new Error("AI returned malformed JSON. Try again.");
+      }
+      setAnalysis(parsed);
       setView("analysis");
     } catch (e) {
       console.error(e);
@@ -462,6 +464,39 @@ Provide a structured analysis. Respond with ONLY valid JSON in this exact shape,
       </div>
     </div>
   );
+}
+
+// LLMs sometimes wrap JSON in prose or code fences despite instructions.
+// Strip fences, then scan for the first balanced {...} and try to parse it.
+function parseLooseJSON(raw) {
+  if (!raw) return null;
+  const cleaned = raw.replace(/```json|```/g, "").trim();
+  try { return JSON.parse(cleaned); } catch {}
+
+  const start = cleaned.indexOf("{");
+  if (start === -1) return null;
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = start; i < cleaned.length; i++) {
+    const c = cleaned[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === "\\") esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') inStr = true;
+    else if (c === "{") depth++;
+    else if (c === "}") {
+      depth--;
+      if (depth === 0) {
+        const candidate = cleaned.slice(start, i + 1);
+        try { return JSON.parse(candidate); } catch { return null; }
+      }
+    }
+  }
+  return null;
 }
 
 function formatDate(iso) {
