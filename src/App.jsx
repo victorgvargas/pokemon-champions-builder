@@ -294,28 +294,55 @@ Respond with JSON only.`;
         ],
       };
 
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            responseMimeType: "application/json",
-            responseSchema: schema,
-            temperature: 0.7,
-          },
-        }),
-      });
+      const body = {
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: "application/json",
+          responseSchema: schema,
+          temperature: 0.7,
+        },
+      };
 
-      if (!response.ok) {
-        const errText = await response.text();
-        console.error("Gemini error:", errText);
-        throw new Error(`Gemini ${response.status}`);
+      // Try the best model first, fall back to a lighter one if the primary is
+      // overloaded. Retry transient errors (429/503) with exponential backoff.
+      const models = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-latest"];
+      let text = null;
+      let lastErr = null;
+      outer: for (const model of models) {
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+          let response;
+          try {
+            response = await fetch(url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            });
+          } catch (netErr) {
+            lastErr = netErr;
+            continue;
+          }
+
+          if (response.ok) {
+            const data = await response.json();
+            text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (text) break outer;
+            lastErr = new Error(`${model}: empty response`);
+            continue;
+          }
+
+          const errText = await response.text();
+          console.warn(`Gemini ${model} attempt ${attempt + 1} → ${response.status}`, errText);
+          lastErr = new Error(`${model} ${response.status}`);
+
+          // Retry only on transient failures. 4xx (400/401/403) won't recover,
+          // so bail to the next model immediately.
+          if (response.status !== 429 && response.status !== 503 && response.status !== 500) break;
+          await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+        }
       }
-      const data = await response.json();
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!text) throw new Error("Empty response");
+
+      if (!text) throw lastErr || new Error("All Gemini models unavailable");
       setAnalysis(JSON.parse(text));
       setView("analysis");
     } catch (e) {
