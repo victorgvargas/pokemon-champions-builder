@@ -21,6 +21,14 @@ const CHOICE_SCARF = "Choice Scarf";
 
 const INTIMIDATE = "Intimidate";
 
+// Moves that only exist to support another active Pokémon. In singles these
+// range from "useless" (Ally Switch, Follow Me) to "wasted slot" (Helping
+// Hand). Flagged as a weakness when seen on a singles team.
+const DOUBLES_ONLY_MOVES = new Set([
+  "Fake Out", "Follow Me", "Rage Powder", "Ally Switch",
+  "Wide Guard", "Quick Guard", "Helping Hand", "Coaching",
+]);
+
 export function analyzeTeam({ team, format, typeAnalysis }) {
   const mons = team.filter((s) => s.pokemon).map((s) => ({
     name: s.pokemon.name,
@@ -71,8 +79,20 @@ export function analyzeTeam({ team, format, typeAnalysis }) {
   else if (mons.some((m) => m.ability?.startsWith("Drought"))) archetype = "Sun Offense";
   else if (mons.some((m) => m.ability === "Sand Stream")) archetype = "Sand Offense";
   else if (mons.some((m) => m.ability?.startsWith("Snow Warning"))) archetype = "Snow / Veil";
-  else if (fakeOutUsers.length >= 2 && intimidators.length >= 1) archetype = "Fake Out Control";
+  else if (fakeOutUsers.length >= 2 && intimidators.length >= 1 && format === "doubles") archetype = "Fake Out Control";
   else if (avgSpe >= 100 && priorityUsers.length >= 2) archetype = "Hyper Offense";
+
+  // Singles-only archetypes.
+  if (format === "singles" && archetype === "Balanced Goodstuffs") {
+    const moveSet = new Set(mons.flatMap((m) => m.moves));
+    const hasHazards = ["Stealth Rock", "Spikes"].some((m) => moveSet.has(m));
+    const hasSetup = ["Swords Dance", "Dragon Dance", "Calm Mind", "Nasty Plot"].some((m) => moveSet.has(m));
+    const hasPivot = ["U-turn", "Volt Switch", "Parting Shot"].some((m) => moveSet.has(m));
+    if (hasHazards && hasSetup) archetype = "Hazard Offense";
+    else if (hasSetup && priorityUsers.length >= 1) archetype = "Setup + Priority";
+    else if (hasPivot && avgHp >= 85) archetype = "Bulky Offense";
+    else if (hasSetup) archetype = "Setup Offense";
+  }
 
   // ---- speed control ------------------------------------------------------
   const scParts = [];
@@ -141,6 +161,18 @@ export function analyzeTeam({ team, format, typeAnalysis }) {
     weaknessesList.push("Frail mons with no redirection are easy to double-target.");
   }
   if (concentratedTypes.length) weaknessesList.push(`${concentratedTypes.map(([t]) => t).join("/")} stacking leaves you open to spread moves.`);
+
+  // Singles-specific: flag doubles-only moves on a singles team.
+  if (format === "singles") {
+    const offenders = [];
+    for (const m of mons) {
+      const bad = m.moves.filter((x) => DOUBLES_ONLY_MOVES.has(x));
+      if (bad.length) offenders.push(`${m.name} (${bad.join(", ")})`);
+    }
+    if (offenders.length) {
+      weaknessesList.push(`Doubles-only moves carried into singles: ${offenders.join("; ")}. Replace with singles-appropriate moves.`);
+    }
+  }
   if (weaknessesList.length === 0) weaknessesList.push("No glaring structural weaknesses — execution matters most.");
 
   // ---- threats ------------------------------------------------------------
@@ -185,6 +217,16 @@ export function analyzeTeam({ team, format, typeAnalysis }) {
   if (!tailwinders.length && !trickRoomers.length && !scarfers.length && !priorityUsers.length) score -= 6;
   if (mons.length < 6) score -= (6 - mons.length) * 4;
 
+  // Singles: each doubles-only move carried in costs 3 points. A team with
+  // two or three doubles holdovers can't cross the A threshold.
+  if (format === "singles") {
+    const doublesMoveCount = mons.reduce(
+      (sum, m) => sum + m.moves.filter((x) => DOUBLES_ONLY_MOVES.has(x)).length,
+      0
+    );
+    score -= doublesMoveCount * 3;
+  }
+
   // Bonuses — cohesive structure should pull teams to A.
   if (tailwinders.length >= 1 || trickRoomers.length >= 1 || scarfers.length >= 1) score += 3;
   if (fakeOutUsers.length >= 1 && format === "doubles") score += 3;
@@ -194,6 +236,23 @@ export function analyzeTeam({ team, format, typeAnalysis }) {
   if (totalResists >= 12) score += 2;
   // Clear archetype identity (not "Balanced Goodstuffs") shows commitment.
   if (archetype !== "Balanced Goodstuffs") score += 2;
+
+  // Singles-specific bonuses: hazards, hazard removal, setup sweepers,
+  // pivots/momentum, and Assault Vest bulk are the singles equivalents of
+  // Fake Out / redirection in doubles.
+  if (format === "singles") {
+    const moveSet = new Set(mons.flatMap((m) => m.moves));
+    const HAZARDS = ["Stealth Rock", "Spikes", "Toxic Spikes", "Sticky Web"];
+    const REMOVAL = ["Rapid Spin", "Defog", "Tidy Up"];
+    const SETUP = ["Swords Dance", "Dragon Dance", "Calm Mind", "Nasty Plot", "Bulk Up", "Iron Defense", "Curse"];
+    const PIVOT = ["U-turn", "Volt Switch", "Parting Shot", "Teleport", "Flip Turn"];
+
+    if (HAZARDS.some((m) => moveSet.has(m))) score += 3;
+    if (REMOVAL.some((m) => moveSet.has(m))) score += 3;
+    if (SETUP.some((m) => moveSet.has(m))) score += 3;
+    if (PIVOT.some((m) => moveSet.has(m))) score += 2;
+    if (mons.some((m) => m.item === "Assault Vest" || m.item === "Leftovers")) score += 1;
+  }
 
   score = Math.max(40, Math.min(100, score));
   const overall_grade = score >= 90 ? "A" : score >= 80 ? "B" : score >= 70 ? "C" : score >= 60 ? "D" : "F";

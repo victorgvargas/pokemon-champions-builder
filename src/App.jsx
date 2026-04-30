@@ -499,20 +499,35 @@ ${rules}
         console.warn("Rules fetch failed, falling back:", rulesErr);
       }
 
-      const prompt = `${rulesBlock}You are an expert competitive coach for the game **Pokémon Champions** (NOT mainline Pokémon VGC — the two games have different mechanics, different SP/EV systems, different Mega/Tera availability, different ban lists, and different format rules). Analyze the following team for ${format === "doubles" ? "Doubles (bring 6, select 4 per match)" : "Singles (bring 6, select 3 per match)"} format.
+      const formatBlock = format === "doubles"
+        ? `FORMAT: Doubles (bring 6, select 4 per match). Evaluate based on DOUBLES priorities: speed control layers, spread moves, Fake Out tempo, Intimidate, redirection (Rage Powder / Follow Me / Ally Switch), positional protection (Protect / Wide Guard / Quick Guard).`
+        : `FORMAT: Singles (bring 6, select 3 per match). Evaluate based on SINGLES priorities: 1-on-1 matchup coverage, hazards / hazard removal, setup sweepers, pivots for momentum, status / trapping / phasing.
+
+CRITICAL — DO NOT JUDGE THIS AS A DOUBLES TEAM. Flag as a WEAKNESS any of the following in this team:
+- Fake Out users (near-useless in singles)
+- Rage Powder, Follow Me, Ally Switch, Wide Guard, Quick Guard, Helping Hand, Coaching (doubles-only)
+- Protect on every Pokémon (usually wasteful in singles — only makes sense on specific stallers)
+- Pokémon chosen purely for doubles-support utility (Aerodactyl for Tailwind, Whimsicott / Talonflame for Prankster Tailwind, Pelipper / Sinistcha / Maushold for redirection-style support) unless they also have a strong 1v1 identity.`;
+
+      const prompt = `${rulesBlock}You are an expert competitive coach for the game **Pokémon Champions** (NOT mainline Pokémon VGC — the two games have different mechanics, different SP/EV systems, different Mega/Tera availability, different ban lists, and different format rules).
+
+${formatBlock}
 
 Base every rules-dependent judgment (legality, SP limits, Mega/Tera/Z/Dynamax availability, banned Pokémon categories, item/species clauses) STRICTLY on the "CURRENT OFFICIAL RULES" block above — do NOT import assumptions from mainline Pokémon VGC regulations. If the team contains an illegal pick for the current Pokémon Champions regulation, flag it in weaknesses.
 
 The team:
 ${JSON.stringify(teamSummary, null, 2)}
 
-Team-wide defensive concerns (3+ Pokémon weak, OR 2 weak with 0 resists):
+Team-wide defensive concerns (uncoverable type holes):
 ${JSON.stringify(weaknessSummary, null, 2)}
 
 GRADING RUBRIC — use this scale honestly, do not default-anchor at B:
-- **A**: Coherent archetype (sun/rain/TR/tailwind/hyper offense), all 6 slots synergize, speed control present, Fake Out/redirection covered (for doubles), at most one minor type hole, recognizable top-tier meta presence. If this team were brought to a major tournament and would not obviously embarrass the player, it is at least A-.
-- **B**: Solid team with one clear structural gap (e.g. missing Fake Out OR one 3-way type hole OR over-stacked types). Still viable on ladder.
-- **C**: Multiple structural gaps OR an unclear win condition OR 2+ critical type holes.
+${format === "doubles"
+  ? `- **A**: Coherent doubles archetype (sun/rain/TR/tailwind/hyper offense/Fake Out control), all 6 slots synergize, speed control present, Fake Out and redirection covered, at most one minor type hole.
+- **B**: Solid doubles team with one clear structural gap (missing Fake Out OR one 3-way type hole OR over-stacked types).`
+  : `- **A**: Coherent singles archetype (hazard offense / bulky offense / stall / balance), each pick has a clear 1v1 role, wallbreaker + cleaner present, no doubles-only moves, at most one minor type hole.
+- **B**: Solid singles team with one clear structural gap (no wallbreaker, one 3-way type hole, or a couple of doubles-holdover choices).`}
+- **C**: Multiple structural gaps OR an unclear win condition OR 2+ critical type holes${format === "singles" ? " OR several doubles-only moves slotted in" : ""}.
 - **D**: Incomplete (<5 mons) OR multiple illegal picks OR no win condition.
 - **F**: Actively broken — illegal, duplicate species/items, or 3+ critical gaps.
 

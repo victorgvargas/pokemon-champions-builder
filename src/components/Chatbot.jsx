@@ -129,7 +129,33 @@ export default function Chatbot({
       }).filter(Boolean);
       const usedItems = currentTeam.map((m) => m.item).filter(Boolean);
 
-      const systemPrompt = `${rulesBlock}You are an expert competitive coach for the game **Pokémon Champions** (NOT mainline Pokémon VGC — those are different games with different mechanics, ban lists, and SP/EV rules). Current format: ${format === "doubles" ? "Doubles (bring 6, select 4)" : "Singles (bring 6, select 3)"}.
+      const formatBlock = format === "doubles"
+        ? `CURRENT FORMAT: Doubles (bring 6, select 4 per match). Two of your Pokémon are on the field at once.
+
+DOUBLES PRIORITIES:
+- Speed control layers (Tailwind / Trick Room / priority / Choice Scarf).
+- Spread moves (Rock Slide, Heat Wave, Earthquake, Muddy Water, Blizzard, Dazzling Gleam, Hyper Voice, Matcha Gotcha).
+- Disruption and tempo (Fake Out, Intimidate, Parting Shot).
+- Redirection (Rage Powder, Follow Me, Ally Switch).
+- Positional protection (Protect, Wide Guard, Quick Guard).`
+        : `CURRENT FORMAT: Singles (bring 6, select 3 per match). One Pokémon at a time.
+
+SINGLES PRIORITIES:
+- 1-on-1 matchup coverage — each pick should beat multiple threats by itself.
+- Entry hazards and hazard removal (Stealth Rock, Spikes, Rapid Spin, Defog) where applicable.
+- Setup sweepers with recovery or bulk (Swords Dance, Calm Mind, Dragon Dance).
+- Pivots / slow U-turn / Volt Switch for momentum.
+- Status / trapping / phasing where it fits the win condition.
+
+CRITICAL — DO NOT BUILD THIS LIKE A DOUBLES TEAM:
+- DO NOT include doubles-only support moves: Fake Out (single turn of its effect matters far less 1v1), Rage Powder, Follow Me, Ally Switch, Wide Guard, Quick Guard, Helping Hand, Coaching. These are near-useless in singles and mark a team as bad.
+- DO NOT auto-include Protect on every Pokémon — it's a standard doubles pick but wastes a slot in singles except on specific stallers.
+- AVOID picking Aerodactyl, Whimsicott, Talonflame, Pelipper, Maushold, Sinistcha, Floette-Eternal purely for Tailwind / Rage Powder / Follow Me utility — they were meta in doubles, not singles.
+- The META POOL below is scraped from Pokémon Champions DOUBLES tournament usage. Treat its top_moves / top_items as DOUBLES SETS. When picking moves, replace any doubles-only move with a singles-appropriate one from the Pokémon's learnset. When picking roles, reframe the mon for 1v1 duty.`;
+
+      const systemPrompt = `${rulesBlock}You are an expert competitive coach for the game **Pokémon Champions** (NOT mainline Pokémon VGC — those are different games with different mechanics, ban lists, and SP/EV rules).
+
+${formatBlock}
 
 Anchor every legality, mechanics, and regulation claim STRICTLY to the CURRENT OFFICIAL RULES block above. Do NOT apply rules from mainline Pokémon VGC (Scarlet/Violet VGC, SwSh VGC, etc.) unless the rules block explicitly says they apply.
 
@@ -148,11 +174,15 @@ Behavior:
 - If the user asks to BUILD or FILL the team (full team, specific archetype like "sun", "trick room", "rain", "tailwind offense", OR they ask for a tier/quality like "A-tier", "S-tier", "tournament-ready"), set action = "fill_team" and put one pick per empty slot in suggested_fills. Prefer meta Pokémon. Use dex_ids from the META POOL above. For each pick include role, ability, item, and 4 moves.
 - CRITICAL: the name and dex_id in each suggested_fill MUST match exactly — copy both fields verbatim from the META POOL entry. Never pair a name with a different Pokémon's dex_id (e.g. don't write name="Incineroar" with dex_id=3). If you're not 100% sure of the dex_id, pick a different meta Pokémon instead.
 - When filling, AIM FOR A-TIER BY DEFAULT unless the user specifies otherwise. A-tier means:
-  * Coherent archetype (sun / rain / TR / tailwind / hyper offense / Fake Out control).
-  * Speed control present (Tailwind, Trick Room, Choice Scarf, or priority).
-  * For doubles: at least one Fake Out user and at least one form of redirection (Rage Powder, Follow Me) or setup protection.
+  * Coherent archetype (${format === "doubles" ? "sun / rain / TR / tailwind / hyper offense / Fake Out control" : "hazard + offense / bulky offense / stall / weather / balance"}).
+  * ${format === "doubles"
+      ? "Speed control (Tailwind, Trick Room, Choice Scarf, or priority)."
+      : "Way to break walls (wallbreaker + cleaner duo, hazards, or boosting moves)."}
+  * ${format === "doubles"
+      ? "At least one Fake Out user and at least one form of redirection (Rage Powder, Follow Me) or setup protection."
+      : "At least one answer to common singles threats (setup sweepers, priority users, trappers). No moves from the doubles-only list."}
   * No more than one notable shared type weakness across the team.
-  * Each pick pulls its weight — no filler slots.
+  * Each pick pulls its weight — no filler slots and no doubles-role Pokémon carrying doubles-role moves.
   If the user explicitly requests "A-tier" or higher, treat it as a hard requirement and only return a fill_team action if you can honestly deliver it; otherwise explain in reply what would be needed.
 - MUST respect Species Clause: no dex_id may appear twice across the final 6-mon roster (including the ALREADY-USED DEX IDS list above).
 - MUST respect Item Clause: no item may be held by two Pokémon across the final roster (including ALREADY-HELD ITEMS above). Pick different items even when suggesting similar sets.
