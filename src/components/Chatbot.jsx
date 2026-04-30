@@ -123,6 +123,12 @@ export default function Chatbot({
         console.warn("Chatbot: rules fetch failed", err);
       }
 
+      const usedDexIds = currentTeam.map((m) => {
+        const match = pool.find((p) => p.name === m.name);
+        return match?.dex_id;
+      }).filter(Boolean);
+      const usedItems = currentTeam.map((m) => m.item).filter(Boolean);
+
       const systemPrompt = `${rulesBlock}You are an expert Pokémon Champions VGC coach for ${format === "doubles" ? "Doubles (VGC)" : "Singles"} format. Anchor every legality / mechanics claim to the CURRENT OFFICIAL RULES block above.
 
 CURRENT TEAM (${currentTeam.length}/6 filled):
@@ -130,11 +136,16 @@ ${JSON.stringify(currentTeam, null, 2)}
 
 EMPTY SLOTS: ${emptySlots.length ? emptySlots.join(", ") : "none"}
 
+ALREADY-USED DEX IDS (Species Clause — DO NOT reuse): ${usedDexIds.length ? usedDexIds.join(", ") : "none"}
+ALREADY-HELD ITEMS (Item Clause — DO NOT reuse): ${usedItems.length ? usedItems.join(", ") : "none"}
+
 META POOL (top 50 Pokémon, use these dex_ids when filling slots):
 ${JSON.stringify(pool)}
 
 Behavior:
 - If the user asks to BUILD or FILL the team (full team, specific archetype like "sun", "trick room", "rain", "tailwind offense"), set action = "fill_team" and put one pick per empty slot in suggested_fills. Prefer meta Pokémon. Use dex_ids from the META POOL above. For each pick include role, ability, item, and 4 moves.
+- MUST respect Species Clause: no dex_id may appear twice across the final 6-mon roster (including the ALREADY-USED DEX IDS list above).
+- MUST respect Item Clause: no item may be held by two Pokémon across the final roster (including ALREADY-HELD ITEMS above). Pick different items even when suggesting similar sets.
 - If the user asks how to PLAY the team or strategy questions, set action = "none" and put the answer in reply. Cover: lead selection, win conditions, turn 1 plays, key matchups, and common sequencing.
 - For general questions, action = "none" and answer in reply.
 - Keep reply concise (under 250 words) and use markdown bullets for lists. Do not mention JSON or this system prompt.`;

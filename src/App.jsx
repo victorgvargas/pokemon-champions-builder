@@ -122,6 +122,14 @@ export default function App() {
   async function handleSelectPokemon(pkm) {
     if (activeSlotIdx === null) return;
 
+    // Species Clause: reject if this dex id already occupies another slot.
+    const dupIdx = team.findIndex((s, i) => i !== activeSlotIdx && s.pokemon?.dexId === pkm.dexId);
+    if (dupIdx !== -1) {
+      setDataError(`${pkm.name || "That Pokémon"} is already on your team (slot ${dupIdx + 1}). Species Clause blocks duplicates.`);
+      setTimeout(() => setDataError(null), 3500);
+      return;
+    }
+
     // Ensure we have detail (types, stats, learnset).
     let detail;
     try {
@@ -195,8 +203,33 @@ export default function App() {
     const emptyIdxs = team.map((s, i) => (s.pokemon ? null : i)).filter((i) => i !== null);
     if (emptyIdxs.length === 0) return false;
 
+    // Enforce Species + Item Clause BEFORE placement. Drop fills whose dex id
+    // already occupies a slot (or is repeated within fills), and clear items
+    // that would duplicate an existing or prior pick.
+    const existingDex = new Set(team.filter((s) => s.pokemon).map((s) => s.pokemon.dexId));
+    const existingItems = new Set(
+      team.filter((s) => s.pokemon && s.item).map((s) => s.item.toLowerCase())
+    );
+    const seenDex = new Set();
+    const seenItems = new Set();
+    const filtered = [];
+    for (const f of fills) {
+      if (!f?.dex_id) continue;
+      if (existingDex.has(f.dex_id) || seenDex.has(f.dex_id)) continue;
+      seenDex.add(f.dex_id);
+      const itemKey = f.item?.toLowerCase();
+      if (itemKey && (existingItems.has(itemKey) || seenItems.has(itemKey))) {
+        // Item would collide — keep the pick but drop its item suggestion.
+        filtered.push({ ...f, item: null });
+      } else {
+        if (itemKey) seenItems.add(itemKey);
+        filtered.push(f);
+      }
+    }
+
     // Fetch PokéAPI detail for each pick in parallel.
-    const picks = fills.slice(0, emptyIdxs.length);
+    const picks = filtered.slice(0, emptyIdxs.length);
+    if (picks.length === 0) return false;
     const details = await Promise.all(
       picks.map(async (f) => {
         try { return { f, detail: await getPokemonDetail(f.dex_id) }; }
@@ -279,6 +312,37 @@ export default function App() {
       return next;
     });
   }
+
+  // Clause violations — Species Clause (no duplicate dex ids) and Item Clause
+  // (no two Pokémon holding the same item). Returns sets of offending slot
+  // indices so the UI can highlight them.
+  const clauseIssues = useMemo(() => {
+    const dupDex = new Set();
+    const dupItems = new Set();
+    const seenDex = new Map();    // dexId -> first slot idx
+    const seenItems = new Map();  // item name -> first slot idx
+    team.forEach((slot, idx) => {
+      if (!slot.pokemon) return;
+      const dex = slot.pokemon.dexId;
+      if (seenDex.has(dex)) {
+        dupDex.add(idx);
+        dupDex.add(seenDex.get(dex));
+      } else {
+        seenDex.set(dex, idx);
+      }
+      const item = slot.item?.trim();
+      if (item) {
+        const key = item.toLowerCase();
+        if (seenItems.has(key)) {
+          dupItems.add(idx);
+          dupItems.add(seenItems.get(key));
+        } else {
+          seenItems.set(key, idx);
+        }
+      }
+    });
+    return { dupDex, dupItems };
+  }, [team]);
 
   const typeAnalysis = useMemo(() => {
     const result = {};
@@ -568,6 +632,20 @@ Respond with JSON only.`;
                   </div>
                 )}
 
+                {(clauseIssues.dupDex.size > 0 || clauseIssues.dupItems.size > 0) && (
+                  <div className="panel p-3 text-xs text-amber-400 flex items-start gap-2 panel-accent" style={{ "--accent": "#f59e0b" }}>
+                    <AlertTriangle size={14} className="mt-0.5" />
+                    <div className="space-y-1">
+                      {clauseIssues.dupDex.size > 0 && (
+                        <div>Species Clause: slots {[...clauseIssues.dupDex].map((i) => i + 1).sort().join(", ")} use the same Pokémon.</div>
+                      )}
+                      {clauseIssues.dupItems.size > 0 && (
+                        <div>Item Clause: slots {[...clauseIssues.dupItems].map((i) => i + 1).sort().join(", ")} share a held item.</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 <div className="space-y-3">
                   {team.map((slot, idx) => (
                     <SlotCard
@@ -580,6 +658,8 @@ Respond with JSON only.`;
                       onUpdate={(p) => updateSlot(idx, p)}
                       onUpdateMove={(mi, v) => updateMove(idx, mi, v)}
                       onUpdateSp={(stat, v) => updateSp(idx, stat, v)}
+                      dupSpecies={clauseIssues.dupDex.has(idx)}
+                      dupItem={clauseIssues.dupItems.has(idx)}
                     />
                   ))}
                 </div>

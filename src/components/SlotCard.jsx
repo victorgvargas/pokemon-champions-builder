@@ -1,9 +1,10 @@
 import React, { useState } from "react";
-import { ChevronDown, Trash2 } from "lucide-react";
+import { ChevronDown, Trash2, AlertTriangle } from "lucide-react";
 import { TYPE_COLORS, NATURES } from "../lib/types.js";
 
 export default function SlotCard({
   slot, idx, isActive, onActivate, onClear, onUpdate, onUpdateMove, onUpdateSp,
+  dupSpecies = false, dupItem = false,
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -48,8 +49,21 @@ export default function SlotCard({
   const stats = detail?.baseStats || p.baseStats;
   const types = p.types?.length ? p.types : (detail?.types || []);
 
+  const dup = dupSpecies || dupItem;
+
   return (
-    <div className="panel p-4 rounded-sm" style={{ "--accent": TYPE_COLORS[types[0]] || "#ff3860" }}>
+    <div
+      className={`panel p-4 rounded-sm ${dup ? "ring-1 ring-amber-500/60" : ""}`}
+      style={{ "--accent": dup ? "#f59e0b" : (TYPE_COLORS[types[0]] || "#ff3860") }}
+    >
+      {dup && (
+        <div className="flex items-center gap-2 text-[10px] tracking-widest uppercase text-amber-400 mb-2">
+          <AlertTriangle size={12} />
+          {dupSpecies && <span>Duplicate species</span>}
+          {dupSpecies && dupItem && <span>·</span>}
+          {dupItem && <span>Duplicate item</span>}
+        </div>
+      )}
       <div className="flex items-start gap-4">
         <div className="relative shrink-0">
           <div
